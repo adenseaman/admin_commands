@@ -1,0 +1,14 @@
+# plug is removeable harddrive, say it shows up as da0
+# initialize the encrypted drive
+geli init -s 4096 /dev/da0
+# attach it
+geli attach /dev/da0
+# the decrypted block device should show up as /dev/da0.eli
+# create a ZFS pool from it
+zpool create zfsbackup da0.eli
+
+# to remove the drive, export the zfs pool
+zpool export zfsbackup
+# detach the encrypted block device
+geli detach da0.eli
+# remove the harddrive from the system
