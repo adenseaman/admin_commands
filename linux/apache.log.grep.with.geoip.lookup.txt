@@ -1,0 +1,2 @@
+# make sure the geoip-database-contrib and geoip-bin packages are installed
+for i in $(zgrep "search string" apache.logfiles.* | cut -d ":" -f 2 | cut -d " " -f 1 | sort | uniq);do geoiplookup $i;done | grep "City"
