@@ -1,0 +1,641 @@
+********************************************************
+Section 1 - How I replaced a failed ZFS drive on FreeBSD
+********************************************************
+
+Check out this blog post:
+https://itdavid.blogspot.ca/2014/01/howto-replace-failed-disk-drive-in-zfs.html
+Also the Oracle ZFS documentation is super helpful and relevant:
+https://docs.oracle.com/cd/E19253-01/819-5461/ghzvx/index.html
+
+==========================================================================
+Determine which drive failed
+
+root@edge:~ # zpool status
+  pool: zroot
+ state: DEGRADED
+status: One or more devices has been removed by the administrator.
+        Sufficient replicas exist for the pool to continue functioning in a
+        degraded state.
+action: Online the device using 'zpool online' or replace the device with
+        'zpool replace'.
+  scan: scrub repaired 0 in 1h54m with 0 errors on Thu Jan  4 05:25:08 2018
+config:
+
+        NAME                      STATE     READ WRITE CKSUM
+        zroot                     DEGRADED     0     0     0
+          raidz2-0                DEGRADED     0     0     0
+            mfid0p3               ONLINE       0     0     0
+            mfid1p3               ONLINE       0     0     0
+            mfid2p3               ONLINE       0     0     0
+            mfid3p3               ONLINE       0     0     0
+            mfid4p3               ONLINE       0     0     0
+            12221334599158383820  REMOVED      0     0     0  was /dev/mfid5p3
+
+==========================================================================
+Since the failed drive is gone, check the partition structure of a similar drive
+
+root@edge:~ # gpart show mfid4
+=>        40  1952448432  mfid4  GPT  (931G)
+          40        1024      1  freebsd-boot  (512K)
+        1064         984         - free -  (492K)
+        2048    67108864      2  freebsd-swap  (32G)
+    67110912  1885335552      3  freebsd-zfs  (899G)
+  1952446464        2008         - free -  (1.0M)
+
+==========================================================================
+Print out some more detailed information about the drives in the system
+
+root@edge:~ # gpart list
+Geom name: mfid0
+modified: false
+state: OK
+fwheads: 255
+fwsectors: 63
+last: 1952448471
+first: 40
+entries: 152
+scheme: GPT
+Providers:
+1. Name: mfid0p1
+   Mediasize: 524288 (512K)
+   Sectorsize: 512
+   Stripesize: 0
+   Stripeoffset: 20480
+   Mode: r0w0e0
+   rawuuid: 56bb7941-b437-11e7-8321-001e4f17f5fc
+   rawtype: 83bd6b9d-7f41-11dc-be0b-001560b84f0f
+   label: gptboot0
+   length: 524288
+   offset: 20480
+   type: freebsd-boot
+   index: 1
+   end: 1063
+   start: 40
+2. Name: mfid0p2
+   Mediasize: 34359738368 (32G)
+   Sectorsize: 512
+   Stripesize: 0
+   Stripeoffset: 1048576
+   Mode: r1w1e0
+   rawuuid: 56da334c-b437-11e7-8321-001e4f17f5fc
+   rawtype: 516e7cb5-6ecf-11d6-8ff8-00022d09712b
+   label: swap0
+   length: 34359738368
+   offset: 1048576
+   type: freebsd-swap
+   index: 2
+   end: 67110911
+   start: 2048
+3. Name: mfid0p3
+   Mediasize: 965291802624 (899G)
+   Sectorsize: 512
+   Stripesize: 0
+   Stripeoffset: 1048576
+   Mode: r1w1e1
+   rawuuid: 56ee69ae-b437-11e7-8321-001e4f17f5fc
+   rawtype: 516e7cba-6ecf-11d6-8ff8-00022d09712b
+   label: zfs0
+   length: 965291802624
+   offset: 34360786944
+   type: freebsd-zfs
+   index: 3
+   end: 1952446463
+   start: 67110912
+Consumers:
+1. Name: mfid0
+   Mediasize: 999653638144 (931G)
+   Sectorsize: 512
+   Mode: r2w2e3
+
+Geom name: mfid1
+modified: false
+state: OK
+fwheads: 255
+fwsectors: 63
+last: 1952448471
+first: 40
+entries: 152
+scheme: GPT
+Providers:
+1. Name: mfid1p1
+   Mediasize: 524288 (512K)
+   Sectorsize: 512
+   Stripesize: 0
+   Stripeoffset: 20480
+   Mode: r0w0e0
+   rawuuid: 570ebca3-b437-11e7-8321-001e4f17f5fc
+   rawtype: 83bd6b9d-7f41-11dc-be0b-001560b84f0f
+   label: gptboot1
+   length: 524288
+   offset: 20480
+   type: freebsd-boot
+   index: 1
+   end: 1063
+   start: 40
+2. Name: mfid1p2
+   Mediasize: 34359738368 (32G)
+   Sectorsize: 512
+   Stripesize: 0
+   Stripeoffset: 1048576
+   Mode: r1w1e0
+   rawuuid: 571b7488-b437-11e7-8321-001e4f17f5fc
+   rawtype: 516e7cb5-6ecf-11d6-8ff8-00022d09712b
+   label: swap1
+   length: 34359738368
+   offset: 1048576
+   type: freebsd-swap
+   index: 2
+   end: 67110911
+   start: 2048
+3. Name: mfid1p3
+   Mediasize: 965291802624 (899G)
+   Sectorsize: 512
+   Stripesize: 0
+   Stripeoffset: 1048576
+   Mode: r1w1e1
+   rawuuid: 573c85e9-b437-11e7-8321-001e4f17f5fc
+   rawtype: 516e7cba-6ecf-11d6-8ff8-00022d09712b
+   label: zfs1
+   length: 965291802624
+   offset: 34360786944
+   type: freebsd-zfs
+   index: 3
+   end: 1952446463
+   start: 67110912
+Consumers:
+1. Name: mfid1
+   Mediasize: 999653638144 (931G)
+   Sectorsize: 512
+   Mode: r2w2e3
+
+Geom name: mfid2
+modified: false
+state: OK
+fwheads: 255
+fwsectors: 63
+last: 1952448471
+first: 40
+entries: 152
+scheme: GPT
+Providers:
+1. Name: mfid2p1
+   Mediasize: 524288 (512K)
+   Sectorsize: 512
+   Stripesize: 0
+   Stripeoffset: 20480
+   Mode: r0w0e0
+   rawuuid: 577e2f84-b437-11e7-8321-001e4f17f5fc
+   rawtype: 83bd6b9d-7f41-11dc-be0b-001560b84f0f
+   label: gptboot2
+   length: 524288
+   offset: 20480
+   type: freebsd-boot
+   index: 1
+   end: 1063
+   start: 40
+2. Name: mfid2p2
+   Mediasize: 34359738368 (32G)
+   Sectorsize: 512
+   Stripesize: 0
+   Stripeoffset: 1048576
+   Mode: r0w0e0
+   rawuuid: 579135e1-b437-11e7-8321-001e4f17f5fc
+   rawtype: 516e7cb5-6ecf-11d6-8ff8-00022d09712b
+   label: swap2
+   length: 34359738368
+   offset: 1048576
+   type: freebsd-swap
+   index: 2
+   end: 67110911
+   start: 2048
+3. Name: mfid2p3
+   Mediasize: 965291802624 (899G)
+   Sectorsize: 512
+   Stripesize: 0
+   Stripeoffset: 1048576
+   Mode: r1w1e1
+   rawuuid: 57aa7de5-b437-11e7-8321-001e4f17f5fc
+   rawtype: 516e7cba-6ecf-11d6-8ff8-00022d09712b
+   label: zfs2
+   length: 965291802624
+   offset: 34360786944
+   type: freebsd-zfs
+   index: 3
+   end: 1952446463
+   start: 67110912
+Consumers:
+1. Name: mfid2
+   Mediasize: 999653638144 (931G)
+   Sectorsize: 512
+   Mode: r1w1e2
+
+Geom name: mfid3
+modified: false
+state: OK
+fwheads: 255
+fwsectors: 63
+last: 1952448471
+first: 40
+entries: 152
+scheme: GPT
+Providers:
+1. Name: mfid3p1
+   Mediasize: 524288 (512K)
+   Sectorsize: 512
+   Stripesize: 0
+   Stripeoffset: 20480
+   Mode: r0w0e0
+   rawuuid: 57f477b7-b437-11e7-8321-001e4f17f5fc
+   rawtype: 83bd6b9d-7f41-11dc-be0b-001560b84f0f
+   label: gptboot3
+   length: 524288
+   offset: 20480
+   type: freebsd-boot
+   index: 1
+   end: 1063
+   start: 40
+2. Name: mfid3p2
+   Mediasize: 34359738368 (32G)
+   Sectorsize: 512
+   Stripesize: 0
+   Stripeoffset: 1048576
+   Mode: r0w0e0
+   rawuuid: 580f45ae-b437-11e7-8321-001e4f17f5fc
+   rawtype: 516e7cb5-6ecf-11d6-8ff8-00022d09712b
+   label: swap3
+   length: 34359738368
+   offset: 1048576
+   type: freebsd-swap
+   index: 2
+   end: 67110911
+   start: 2048
+3. Name: mfid3p3
+   Mediasize: 965291802624 (899G)
+   Sectorsize: 512
+   Stripesize: 0
+   Stripeoffset: 1048576
+   Mode: r1w1e1
+   rawuuid: 582eb88d-b437-11e7-8321-001e4f17f5fc
+   rawtype: 516e7cba-6ecf-11d6-8ff8-00022d09712b
+   label: zfs3
+   length: 965291802624
+   offset: 34360786944
+   type: freebsd-zfs
+   index: 3
+   end: 1952446463
+   start: 67110912
+Consumers:
+1. Name: mfid3
+   Mediasize: 999653638144 (931G)
+   Sectorsize: 512
+   Mode: r1w1e2
+
+Geom name: mfid4
+modified: false
+state: OK
+fwheads: 255
+fwsectors: 63
+last: 1952448471
+first: 40
+entries: 152
+scheme: GPT
+Providers:
+1. Name: mfid4p1
+   Mediasize: 524288 (512K)
+   Sectorsize: 512
+   Stripesize: 0
+   Stripeoffset: 20480
+   Mode: r0w0e0
+   rawuuid: 586a5e8b-b437-11e7-8321-001e4f17f5fc
+   rawtype: 83bd6b9d-7f41-11dc-be0b-001560b84f0f
+   label: gptboot4
+   length: 524288
+   offset: 20480
+   type: freebsd-boot
+   index: 1
+   end: 1063
+   start: 40
+2. Name: mfid4p2
+   Mediasize: 34359738368 (32G)
+   Sectorsize: 512
+   Stripesize: 0
+   Stripeoffset: 1048576
+   Mode: r0w0e0
+   rawuuid: 587db7f7-b437-11e7-8321-001e4f17f5fc
+   rawtype: 516e7cb5-6ecf-11d6-8ff8-00022d09712b
+   label: swap4
+   length: 34359738368
+   offset: 1048576
+   type: freebsd-swap
+   index: 2
+   end: 67110911
+   start: 2048
+3. Name: mfid4p3
+   Mediasize: 965291802624 (899G)
+   Sectorsize: 512
+   Stripesize: 0
+   Stripeoffset: 1048576
+   Mode: r1w1e1
+   rawuuid: 588eeb27-b437-11e7-8321-001e4f17f5fc
+   rawtype: 516e7cba-6ecf-11d6-8ff8-00022d09712b
+   label: zfs4
+   length: 965291802624
+   offset: 34360786944
+   type: freebsd-zfs
+   index: 3
+   end: 1952446463
+   start: 67110912
+Consumers:
+1. Name: mfid4
+   Mediasize: 999653638144 (931G)
+   Sectorsize: 512
+   Mode: r1w1e2
+
+==========================================================================
+The data in the mfid*p1 partitions are all the same.  I verified this by using dd'ing the mfid*p1 partitions into a file and comparing them
+
+==========================================================================
+Disconnect your various computers from the server
+Turn off the server
+Take out the broken drive
+Put in the new drive
+Go into the iPERC BIOS
+  - old drive and virtual disk will be gone
+  - create new virtual disk using new drive
+    - RAID 0 
+    - 64k element size
+    - read policy: no read ahead
+    - write policy: write through
+    - select the "initialize drive" box
+Reboot
+
+Take this opportunity to update FreeBSD and installed packages
+Take a snapshot of the zroot pool before doing these upgrades
+
+==========================================================================
+
+Create partitions in the new drive.
+Use the old partition information as a reference
+root@edge:~ # gpart show mfid4
+=>        40  1952448432  mfid4  GPT  (931G)
+          40        1024      1  freebsd-boot  (512K)
+        1064         984         - free -  (492K)
+        2048    67108864      2  freebsd-swap  (32G)
+    67110912  1885335552      3  freebsd-zfs  (899G)
+  1952446464        2008         - free -  (1.0M)
+
+Issue these commands
+
+*************************************
+***** NOTE, make sure you change drive "mfid5" and labels "gptboot5", "swap5", and "zfs5" to match your drive number
+*************************************
+gpart create -s gpt mfid5
+gpart add -b 40 -s 1024 -t freebsd-boot -l gptboot5 mfid5
+gpart bootcode -b /boot/pmbr -p /boot/gptzfsboot -i 1 mfid5
+gpart add -b 2048 -s 67108864 -t freebsd-swap -l swap5 mfid5
+gpart add -b 67110912 -s 1885335552 -t freebsd-zfs -l zfs5 mfid5
+
+This results in the following partition information
+root@edge:~/tmp # gpart show mfid5
+=>        40  1952448432  mfid5  GPT  (931G)
+          40        1024      1  freebsd-boot  (512K)
+        1064         984         - free -  (492K)
+        2048    67108864      2  freebsd-swap  (32G)
+    67110912  1885335552      3  freebsd-zfs  (899G)
+  1952446464        2008         - free -  (1.0M)
+
+==========================================================================
+Tell ZFS to resilver the replaced drive
+
+zpool replace zroot /dev/mfid5p3
+
+Periodically check to status of the resilvering
+
+zpool status
+
+If you set the drive offline before replacing it, then it should automatically be made online after the replacement.
+
+Then you're done!
+
+
+
+
+
+
+
+
+
+
+***************************************************************************************************************************
+Section 2 - Here are the steps I did to replace the drive without restarting the server, using FreeBSD's "mfiutil" command.
+***************************************************************************************************************************
+
+Get a list of the drives:
+
+[root@edge ~]# mfiutil show drives
+mfi0 Physical Drives:
+ 0 (  932G) ONLINE                      <WDC WD1003FZEX-0 1A01 serial=WD-WCC6Y1HZ1FX4> SATA E1:S0
+ 1 (  932G) ONLINE                      <WDC WD1003FZEX-0 1A01 serial=WD-WCC6Y5KHJCYN> SATA E1:S1
+ 2 (  932G) ONLINE                      <ST31000340NS MA0D serial=9QJ6A0SJ> SATA E1:S2
+ 3 (  932G) UNCONFIGURED GOOD (FOREIGN) <Hitachi HUA72101 A74A serial=GTF000PBGBXPNF> SATA E1:S3
+ 4 (  932G) ONLINE                      <WDC WD1003FZEX-0 1A01 serial=WD-WCC6Y3CEA7P3> SATA E1:S4
+ 5 (  932G) ONLINE                      <WDC WD1003FZEX-0 1A01 serial=WD-WCC6Y7VPS5XZ> SATA E1:S5
+
+Drive #3 is the bad one.
+Turn on the locate light to tell which drive to remove (the drive number are also printed on the enclosure slots on the server)
+mfiutil locate 3 on
+
+Take out the bad drive, remove the bad drive from the rail and put in a new one, making sure that it's screwed into the "SAS" screw holes (as all drives in the array are SATA drives and can go into the SAS slots without the spacer board).
+Put the new drive in, the drive power light should turn on.
+
+Get a list of the drives again:
+
+[root@edge ~]# mfiutil show drives
+mfi0 Physical Drives:
+ 0 (  932G) ONLINE            <WDC WD1003FZEX-0 1A01 serial=WD-WCC6Y1HZ1FX4> SATA E1:S0
+ 1 (  932G) ONLINE            <WDC WD1003FZEX-0 1A01 serial=WD-WCC6Y5KHJCYN> SATA E1:S1
+ 2 (  932G) ONLINE            <ST31000340NS MA0D serial=9QJ6A0SJ> SATA E1:S2
+ 3 (  932G) UNCONFIGURED GOOD <WDC WD1003FZEX-0 1A01 serial=WD-WCC6Y1DT55KK> SATA E1:S3
+ 4 (  932G) ONLINE            <WDC WD1003FZEX-0 1A01 serial=WD-WCC6Y3CEA7P3> SATA E1:S4
+ 5 (  932G) ONLINE            <WDC WD1003FZEX-0 1A01 serial=WD-WCC6Y7VPS5XZ> SATA E1:S5
+
+Drive #3 is now the new drive.
+
+Turn off the locate light:
+mfiutils locate 3 off
+
+Take a look at the existing volumes:
+
+[root@edge ~]# mfiutil show volumes
+mfi0 Volumes:
+  Id     Size    Level   Stripe  State   Cache   Name
+ mfid0 (  931G) RAID-0      64K OPTIMAL Disabled
+ mfid1 (  931G) RAID-0      64K OPTIMAL Disabled
+ mfid2 (  931G) RAID-0      64K OPTIMAL Disabled
+ mfid4 (  931G) RAID-0      64K OPTIMAL Disabled
+ mfid5 (  931G) RAID-0      64K OPTIMAL Disabled
+
+Create a volume on the new drive:
+mfiutil create raid0 3
+
+Check the volumes again
+
+[root@edge ~]# mfiutil show volumes
+mfi0 Volumes:
+  Id     Size    Level   Stripe  State   Cache   Name
+ mfid0 (  931G) RAID-0      64K OPTIMAL Disabled
+ mfid1 (  931G) RAID-0      64K OPTIMAL Disabled
+ mfid2 (  931G) RAID-0      64K OPTIMAL Disabled
+ mfid4 (  931G) RAID-0      64K OPTIMAL Disabled
+ mfid5 (  931G) RAID-0      64K OPTIMAL Disabled
+ mfid3 (  931G) RAID-0      64K OPTIMAL Writes
+
+Disable caching on the new volume:
+
+[root@edge ~]# mfiutil cache mfid3 disable
+Disabling caching of I/O writes
+
+Check the volumes again
+
+[root@edge ~]# mfiutil show volumes
+mfi0 Volumes:
+  Id     Size    Level   Stripe  State   Cache   Name
+ mfid0 (  931G) RAID-0      64K OPTIMAL Disabled
+ mfid1 (  931G) RAID-0      64K OPTIMAL Disabled
+ mfid2 (  931G) RAID-0      64K OPTIMAL Disabled
+ mfid4 (  931G) RAID-0      64K OPTIMAL Disabled
+ mfid5 (  931G) RAID-0      64K OPTIMAL Disabled
+ mfid3 (  931G) RAID-0      64K OPTIMAL Disabled
+
+Perfect, now you can continue on in section 1 of this document with adding a new drive to the zpool
+
+
+
+
+
+
+
+***********************************************************************************
+Section 3 - Here are the steps I did to intentionally replace a drive in the server
+***********************************************************************************
+
+Identify the drive you need to replace
+
+[root@edge ~]# mfiutil show drives                                                                                                                                                                                                                                            
+mfi0 Physical Drives:                                                                                                                                                                                                                                                         
+ 0 (  932G) ONLINE <WDC WD1003FZEX-0 1A01 serial=WD-WCC6Y1HZ1FX4> SATA E1:S0                                                                                                                                                                                                  
+ 1 (  932G) ONLINE <WDC WD1003FZEX-0 1A01 serial=WD-WCC6Y5KHJCYN> SATA E1:S1                                                                                                                                                                                                  
+ 2 (  932G) ONLINE <ST31000340NS MA0D serial=9QJ6A0SJ> SATA E1:S2                                                                                                                                                                                                             
+ 3 (  932G) ONLINE <WDC WD1003FZEX-0 1A01 serial=WD-WCC6Y1DT55KK> SATA E1:S3                                                                                                                                                                                                  
+ 4 (  932G) ONLINE <WDC WD1003FZEX-0 1A01 serial=WD-WCC6Y3CEA7P3> SATA E1:S4                                                                                                                                                                                                  
+ 5 (  932G) ONLINE <WDC WD1003FZEX-0 1A01 serial=WD-WCC6Y7VPS5XZ> SATA E1:S5
+
+I want to replace drive #2, which is the Seagate drive.
+
+Let's take a look at the volumes
+
+[root@edge ~]# mfiutil show volumes                                                                                                                                                                                                                                           
+mfi0 Volumes:                                                                                                                                                                                                                                                                 
+  Id     Size    Level   Stripe  State   Cache   Name                                                                                                                                                                                                                         
+ mfid0 (  931G) RAID-0      64K OPTIMAL Disabled                                                                                                                                                                                                                              
+ mfid1 (  931G) RAID-0      64K OPTIMAL Disabled                                                                                                                                                                                                                              
+ mfid2 (  931G) RAID-0      64K OPTIMAL Disabled                                                                                                                                                                                                                              
+ mfid4 (  931G) RAID-0      64K OPTIMAL Disabled                                                                                                                                                                                                                              
+ mfid5 (  931G) RAID-0      64K OPTIMAL Disabled                                                                                                                                                                                                                              
+ mfid3 (  931G) RAID-0      64K OPTIMAL Disabled
+
+Let's take a look at the RAID configuration
+
+[root@edge ~]# mfiutil show config
+mfi0 Configuration: 6 arrays, 6 volumes, 0 spares
+    array 0 of 1 drives:
+        drive  0 (  932G) ONLINE <WDC WD1003FZEX-0 1A01 serial=WD-WCC6Y1HZ1FX4> SATA
+    array 1 of 1 drives:
+        drive  1 (  932G) ONLINE <WDC WD1003FZEX-0 1A01 serial=WD-WCC6Y5KHJCYN> SATA
+    array 2 of 1 drives:
+        drive  2 (  932G) ONLINE <ST31000340NS MA0D serial=9QJ6A0SJ> SATA
+    array 3 of 1 drives:
+        drive  4 (  932G) ONLINE <WDC WD1003FZEX-0 1A01 serial=WD-WCC6Y3CEA7P3> SATA
+    array 4 of 1 drives:
+        drive  5 (  932G) ONLINE <WDC WD1003FZEX-0 1A01 serial=WD-WCC6Y7VPS5XZ> SATA
+    array 5 of 1 drives:
+        drive  3 (  932G) ONLINE <WDC WD1003FZEX-0 1A01 serial=WD-WCC6Y1DT55KK> SATA
+    volume mfid0 (931G) RAID-0 64K OPTIMAL spans:
+        array 0
+    volume mfid1 (931G) RAID-0 64K OPTIMAL spans:
+        array 1
+    volume mfid2 (931G) RAID-0 64K OPTIMAL spans:
+        array 2
+    volume mfid4 (931G) RAID-0 64K OPTIMAL spans:
+        array 3
+    volume mfid5 (931G) RAID-0 64K OPTIMAL spans:
+        array 4
+    volume mfid3 (931G) RAID-0 64K OPTIMAL spans:
+        array 5
+
+We see that drive 2 belongs to array 2 which corresponds to volume mfid2
+
+Take a look at the ZFS pool configuration
+
+[root@edge ~]# zpool status
+  pool: zroot
+ state: ONLINE
+  scan: scrub repaired 0 in 2h31m with 0 errors on Tue Jul 10 07:16:52 2018
+config:
+
+        NAME         STATE     READ WRITE CKSUM
+        zroot        ONLINE       0     0     0
+          raidz2-0   ONLINE       0     0     0
+            mfid0p3  ONLINE       0     0     0
+            mfid1p3  ONLINE       0     0     0
+            mfid2p3  ONLINE       0     0     0
+            mfid3p3  ONLINE       0     0     0
+            mfid4p3  ONLINE       0     0     0
+            mfid5p3  ONLINE       0     0     0
+
+errors: No known data errors
+
+So we're going to want to take mfid2p3 offline and then replace drive 2:
+zpool offline zroot mfid2p3
+
+Take a look at the zpool configuration again
+
+[root@edge ~]# zpool status
+  pool: zroot
+ state: DEGRADED
+status: One or more devices has been taken offline by the administrator.
+        Sufficient replicas exist for the pool to continue functioning in a
+        degraded state.
+action: Online the device using 'zpool online' or replace the device with
+        'zpool replace'.
+  scan: scrub repaired 0 in 2h31m with 0 errors on Tue Jul 10 07:16:52 2018
+config:
+
+        NAME                      STATE     READ WRITE CKSUM
+        zroot                     DEGRADED     0     0     0
+          raidz2-0                DEGRADED     0     0     0
+            mfid0p3               ONLINE       0     0     0
+            mfid1p3               ONLINE       0     0     0
+            16583795512054778156  OFFLINE      0     0     0  was /dev/mfid2p3
+            mfid3p3               ONLINE       0     0     0
+            mfid4p3               ONLINE       0     0     0
+            mfid5p3               ONLINE       0     0     0
+
+errors: No known data errors
+
+Perfect, now let's make drive 2 blink so we know which one to remove
+mfiutil locate 2 on
+
+Now take the drive out and replace it with a new one
+
+[root@edge ~]# mfiutil show drives
+mfi0 Physical Drives:
+ 0 (  932G) ONLINE            <WDC WD1003FZEX-0 1A01 serial=WD-WCC6Y1HZ1FX4> SATA E1:S0
+ 1 (  932G) ONLINE            <WDC WD1003FZEX-0 1A01 serial=WD-WCC6Y5KHJCYN> SATA E1:S1
+ 2 (  932G) UNCONFIGURED GOOD <WDC WD1003FZEX-0 1A01 serial=WD-WCC6Y6FLLA82> SATA E1:S2
+ 3 (  932G) ONLINE            <WDC WD1003FZEX-0 1A01 serial=WD-WCC6Y1DT55KK> SATA E1:S3
+ 4 (  932G) ONLINE            <WDC WD1003FZEX-0 1A01 serial=WD-WCC6Y3CEA7P3> SATA E1:S4
+ 5 (  932G) ONLINE            <WDC WD1003FZEX-0 1A01 serial=WD-WCC6Y7VPS5XZ> SATA E1:S5
+
+Now pick up in section 2 of this document on creating a new RAID volume and initializing it.
+The replaced drive should automatically be made online after you've rebuild it.
