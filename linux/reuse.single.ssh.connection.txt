@@ -1,0 +1,12 @@
+# It took me a lot of searching to find out how to do this.
+# After fumbling around with giving ssh ControlPath command line arguments I came across this post that says it all very concisely: https://superuser.com/a/1362903
+
+# Initiate the remote connection and control socket, but don't start a shell
+ssh foo@bar.example.com -fNMS ~/.ssh/bar.socket
+
+# Run some commands through the control socket
+ssh foo@bar.example.com -S ~/.ssh/bar.socket "command 1"
+ssh foo@bar.example.com -S ~/.ssh/bar.socket "command 2"
+
+# Shut down the command socket
+ssh foo@bar.example.com -S ~/.ssh/bar.socket -O exit
