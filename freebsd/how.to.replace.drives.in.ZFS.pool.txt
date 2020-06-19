@@ -32,6 +32,16 @@ config:
             12221334599158383820  REMOVED      0     0     0  was /dev/mfid5p3
 
 ==========================================================================
+You can use smartctl to figure out what went wrong with the drive.
+To do this you need to load the mfip module that allows MFI controller drives to appear as /dev/pass* devices.
+kldload mfip
+
+Then use smartctl to probe the drive.  On my system the drives are SATA, so I need to specify the SAT device type.
+smartctl -a -d sat /dev/pass1
+
+When you're done, unload the mfip module
+mldunload mfip
+==========================================================================
 Since the failed drive is gone, check the partition structure of a similar drive
 
 root@edge:~ # gpart show mfid4
