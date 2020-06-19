@@ -40,7 +40,7 @@ Then use smartctl to probe the drive.  On my system the drives are SATA, so I ne
 smartctl -a -d sat /dev/pass1
 
 When you're done, unload the mfip module
-mldunload mfip
+kldunload mfip
 ==========================================================================
 Since the failed drive is gone, check the partition structure of a similar drive
 
